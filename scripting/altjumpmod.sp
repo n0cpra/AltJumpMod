@@ -1,6 +1,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#include <tf2_stocks>
 
 #define VERSION "1.0"
 #define MAX_PUMPKIN_LIMIT 3
@@ -12,15 +13,16 @@ float
 int
 	g_iPumpkins[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT],
 	g_iCurrent[MAXPLAYERS+1] = 0,
-	g_iLastSpawned[MAXPLAYERS+1],
-	g_iTimersMax[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT];
+	g_iLastSpawned[MAXPLAYERS+1];
 Handle
 	g_hEnabled,
 	g_hRestrictClass,
 	g_hAutoRemove,
-	g_hTimersMax[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT];
+	g_hTimersMax[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT],
+	g_hRestrictCount;
 bool
 	g_bTimerExists[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT];
+	
 
 public Plugin:myinfo = 
 {
@@ -35,22 +37,34 @@ public OnPluginStart()
 	CreateConVar("sm_ajm_version", VERSION, "AnyJumpMod Version", FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_REPLICATED);
 	g_hEnabled = CreateConVar("sm_ajm_enable", "1", "Turns this plugin on, or off.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	g_hAutoRemove = CreateConVar("sm_ajm_autoremove", "1", "Auto remove pumpkins on/off.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	g_hRestrictClass = CreateConVar("sm_ajm_restriclass", "1", "Turns on restricting this to the heavy only.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	g_hRestrictCount = CreateConVar("sm_ajm_restriamount", "1", "Limits the amount of heavys that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 5.0);
 
 	RegAdminCmd("+pumpkin", cmdPumpkin, ADMFLAG_SLAY);
 	RegAdminCmd("-pumpkin", cmdToggle, ADMFLAG_SLAY);
+	
+	//HookEvent("player_changeclass", eventPlayerChangeClass);
+	AddCommandListener(OnChangeClass, "joinclass");
 }
 public Action cmdToggle(int client, int args)
 {
 	if (GetConVarBool(g_hEnabled) && GetConVarBool(g_hAutoRemove) && g_iCurrent[client]-1 < 3)
 	{
-#if defined DEBUG
-	PrintToServer("DEBUG: Entity %i has been marked for auto removal.", g_iLastSpawned[client]);
-#endif
-		if (!g_bTimerExists[client][g_iCurrent[client]-1])
+		if (TF2_GetPlayerClass(client) != TFClass_Heavy)
 		{
-			g_hTimersMax[client][g_iCurrent[client]-1] = CreateTimer(30.0, timerAutoRemove, g_iLastSpawned[client], TIMER_FLAG_NO_MAPCHANGE);
-			g_bTimerExists[client][g_iCurrent[client]-1] = true;
-			g_iLastSpawned[client] = 0;
+			return Plugin_Handled;
+		}
+#if defined DEBUG
+		PrintToServer("DEBUG: Entity %i has been marked for auto removal.", g_iLastSpawned[client]);
+#endif
+		for (int x=0;x<MAX_PUMPKIN_LIMIT;x++)
+		{
+			if (!g_bTimerExists[client][x])
+			{
+				g_hTimersMax[client][x] = CreateTimer(30.0, timerAutoRemove, g_iLastSpawned[client], TIMER_FLAG_NO_MAPCHANGE);
+				g_bTimerExists[client][x] = true;
+				g_iLastSpawned[client] = 0;
+			}
 		}
 	}
 	return Plugin_Handled;
@@ -58,6 +72,10 @@ public Action cmdToggle(int client, int args)
 public Action cmdPumpkin(int client, int args)
 {
 	if (!GetConVarBool(g_hEnabled))
+	{
+		return Plugin_Handled;
+	}
+	if (TF2_GetPlayerClass(client) != TFClass_Heavy)
 	{
 		return Plugin_Handled;
 	}
@@ -174,9 +192,50 @@ Action timerAutoRemove(Handle timer, any data)
 		}
 	}
 }
+//Action eventPlayerChangeClass(Handle event, const char[] name, bool dontBroadcast)
+Action OnChangeClass(int client, const char[] command, int argc)
+{
+	char arg1[MAX_NAME_LENGTH]; GetCmdArg(1, arg1, sizeof arg1);
+#if defined DEBUG
+	PrintToServer("DEBUG: Command: %s args: %s", command, arg1[0]);
+#endif
+	if (!GetConVarBool(g_hEnabled) || !GetConVarBool(g_hRestrictClass)) { return Plugin_Handled; }
+	
+	if (strcmp("joinclass", command, false) == 0 && strcmp("heavyweapons", arg1[0], false) == 0)
+	{
+#if defined DEBUG
+		PrintToServer("DEBUG: Client issued a %s command with %s as an arg.", command, arg1[0]);
+#endif
+		if (GetPlayersByClass(TFClass_Heavy) >= GetConVarInt(g_hRestrictCount))
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
+#endif
+			PrintToChat(client, "[SM] There are already too many people playing as a heavy.");
+			//TF2_SetPlayerClass(client, TFClass_DemoMan, false);
+			return Plugin_Stop;
+		}
+	}
+	return Plugin_Continue;
+}
+int GetPlayersByClass(TFClassType class)
+{
+	int count = 0;
+	for (int i=1;i<=MaxClients;i++)
+	{
+		if (IsValidClient(i) && TF2_GetPlayerClass(i) == class)
+		{
+			count++;
+#if defined DEBUG
+			PrintToServer("DEBUG: We have found %i (%N) players currently playing as a heavy", count, i);
+#endif
+		}
+	}
+	return count;
+}
 bool IsValidClient(int client)
 {
-    if (!(1 <= client <= MaxClients) || !IsClientInGame(client) || IsFakeClient(client))
+    if (!(1 <= client <= MaxClients) || !IsClientInGame(client))
         return false;
     
     return true;
