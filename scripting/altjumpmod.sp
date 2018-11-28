@@ -5,7 +5,7 @@
 #define VERSION "1.0"
 #define MAX_PUMPKIN_LIMIT 3
 
-//#define DEBUG
+#define DEBUG
 
 float 
 	g_pos[3];
@@ -41,7 +41,7 @@ public OnPluginStart()
 }
 public Action cmdToggle(int client, int args)
 {
-	if (GetConVarBool(g_hEnabled) && GetConVarBool(g_hAutoRemove))
+	if (GetConVarBool(g_hEnabled) && GetConVarBool(g_hAutoRemove) && g_iCurrent[client]-1 < 3)
 	{
 #if defined DEBUG
 	PrintToServer("DEBUG: Entity %i has been marked for auto removal.", g_iLastSpawned[client]);
