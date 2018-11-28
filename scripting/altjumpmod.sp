@@ -5,7 +5,7 @@
 #define VERSION "1.0"
 #define MAX_PUMPKIN_LIMIT 3
 
-#define DEBUG
+//#define DEBUG
 
 float 
 	g_pos[3];
@@ -28,7 +28,7 @@ public Plugin:myinfo =
 	author = "rush",
 	description = "AltJumpMod - Add multiple ways for classes to 'jump'.",
 	version = VERSION,
-	url = "n/a"
+	url = "https://github.com/n0cpra/AltJumpMod"
 }
 public OnPluginStart()
 {
