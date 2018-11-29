@@ -6,3 +6,4 @@ Added Heavy
 
 ### 11/28/2018
 Added medic
+Added spy

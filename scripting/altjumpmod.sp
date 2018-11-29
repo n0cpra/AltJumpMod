@@ -1,7 +1,31 @@
 /*
-		This plugin uses the code from [TF2] pumpkins from linux_lover, and conc grenades from CrancK, and the pyro plugin from <name>
+		This plugin uses the code from [TF2] pumpkins from linux_lover, and the pyro plugin from Leonardo
 		All other code was written by me for this plugin.
+		
+	Projectile Reference
+	----------------------------------------
+	1 - Bullet
+	2 - Rocket
+	3 - Pipebomb
+	4 - Stickybomb (Stickybomb Launcher)
+	5 - Syringe
+	6 - Flare
+	8 - Huntsman Arrow
+	11 - Crusader's Crossbow Bolt
+	12 - Cow Mangler Particle
+	13 - Righteous Bison Particle
+	14 - Stickybomb (Sticky Jumper)
+	17 - Loose Cannon
+	18 - Rescue Ranger Claw
+	19 - Festive Huntsman Arrow
+	22 - Festive Jarate
+	23 - Festive Crusader's Crossbow Bolt
+	24 - Self Aware Beuty Mark
+	25 - Mutated Milk
+	26 - Grappling Hook
+	---------------------------------------
 */
+#pragma newdecls required
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
@@ -26,8 +50,10 @@ Handle
 	g_hAutoRemove,
 	g_hTimersMax[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT],
 	g_hHeavyRestrictCount,
+	g_hSpyRestrictCount,
 	g_hMedicRestrictCount,
-	g_hMedicPower;
+	g_hMedicPower,
+	g_hSpyPower;
 bool
 	g_bTimerExists[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT];
 
@@ -39,7 +65,7 @@ public Plugin myinfo =
 	version = VERSION,
 	url = "https://github.com/n0cpra/AltJumpMod"
 }
-public OnPluginStart()
+public void OnPluginStart()
 {
 	// Classes exluded from this plugin soldier, and demo. They have ways to jump. Engineer is here to make it faster.
 	CreateConVar("sm_ajm_version", VERSION, "AltJumpMod Version", FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_REPLICATED);
@@ -50,28 +76,30 @@ public OnPluginStart()
 	// Medic
 	g_hMedicRestrictCount = CreateConVar("sm_ajm_medic_count", "1", "Limits the amount of medics that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	g_hMedicPower = CreateConVar("sm_ajm_medic_power", "2.50", "Limits the amount of power the rockets give the medic.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 2.50, true, 5.0);
-	// Scout
-	
-	// Sniper
-	
 	// Spy
+	g_hSpyPower = CreateConVar("sm_ajm_spy_power", "0.50", "Limits the amount of power the rockets give the spy.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 5.0);
+	g_hSpyRestrictCount = CreateConVar("sm_ajm_spy_count", "1", "Limits the amount of spies that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	// Scout
+
+	// Sniper
 	
 	// Engineer
 	
-	// Pyro
-
 	// Heavy commands
-	RegConsoleCmd("+pumpkin", cmdPumpkin, "Spawns a pumpkin");
-	RegConsoleCmd("-pumpkin", cmdToggle, "This is automatically fired.", FCVAR_HIDDEN|FCVAR_DONTRECORD);
+	RegConsoleCmd("+pumpkin", cmdPumpkin, "Spawns a NON-SOLID pumpkin");
+	RegConsoleCmd("-pumpkin", cmdToggle, "DO NOT USE - This is automatically fired.", FCVAR_HIDDEN|FCVAR_DONTRECORD);
 
 	// ConVar hooks
 	HookConVarChange(g_hEnabled, cvarEnable);
-	// Heacy stuff
+	// Heavy stuff
 	HookConVarChange(g_hAutoRemove, cvarAutoRemove);
 	HookConVarChange(g_hHeavyRestrictCount, cvarHeavyRestrict);
 	// Medic stuff
 	HookConVarChange(g_hMedicRestrictCount, cvarMedicRestrict);
 	HookConVarChange(g_hMedicPower, cvarMedicPower);
+	// Spy stuff
+	HookConVarChange(g_hSpyRestrictCount, cvarSpyRestrict);
+	HookConVarChange(g_hSpyPower, cvarSpyPower);
 	
 	// Event hooks
 	HookEvent("player_spawn", eventPlayerSpawn);
@@ -79,6 +107,31 @@ public OnPluginStart()
 	// Command listeners
 	AddCommandListener(OnChangeClass, "joinclass");
 	
+	CreateTimer(10.0, DebugTimer, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+	
+}
+Action DebugTimer(Handle Timer, any data)
+{
+	for (int i=1;i<=MaxClients;i++)
+	{
+		if (IsValidClient(i))
+		{
+			for (int x=0;x<=MAX_PUMPKIN_LIMIT-1;x++)
+			{
+				PrintToServer("Report for %N (userid: %i)", i, i);
+				PrintToServer("Pumpkin: %i", g_iPumpkins[i][x]);
+				PrintToServer("Has Timer: %b", g_bTimerExists[i][x]);
+				PrintToServer("Current pumpkins: %i", g_iCurrent[i]);
+			}
+		}
+	}
+}
+int GetClientPumpkins(int client)
+{
+	if (g_iCurrent[client] == 0)
+		return 0;
+	else
+		return g_iCurrent[client]-1;
 }
 public Action cmdToggle(int client, int args)
 {
@@ -88,18 +141,14 @@ public Action cmdToggle(int client, int args)
 		{
 			return Plugin_Handled;
 		}
-#if defined DEBUG
-		// Sometimes a bug happens when this prints and shows the entity as 0. purely a display bug.
-		// Bug fix: remove g_iLastSpawned[client] = 0; from here and put it at the top of cmdPumpkin. UNTESTED
-		PrintToServer("DEBUG: Entity %i has been marked for auto removal.", g_iLastSpawned[client]);
-#endif
-		for (int x=0;x<MAX_PUMPKIN_LIMIT;x++)
+		if (!g_bTimerExists[client][GetClientPumpkins(client)])
 		{
-			if (!g_bTimerExists[client][x])
-			{
-				g_hTimersMax[client][x] = CreateTimer(30.0, timerAutoRemove, g_iLastSpawned[client], TIMER_FLAG_NO_MAPCHANGE);
-				g_bTimerExists[client][x] = true;
-			}
+#if defined DEBUG
+			PrintToServer("DEBUG: Entity %i has been marked for auto removal.", g_iLastSpawned[client]);
+#endif
+			g_hTimersMax[client][GetClientPumpkins(client)] = CreateTimer(30.0, timerAutoRemove, g_iLastSpawned[client], TIMER_FLAG_NO_MAPCHANGE);
+			g_bTimerExists[client][GetClientPumpkins(client)] = true;
+			g_iLastSpawned[client] = 0;
 		}
 	}
 	return Plugin_Handled;
@@ -126,7 +175,6 @@ public Action cmdPumpkin(int client, int args)
 		return Plugin_Handled;
 	}
 
-	g_iLastSpawned[client] = 0;
 	g_iPumpkins[client][g_iCurrent[client]] = CreateEntityByName("tf_pumpkin_bomb");
 #if defined DEBUG
 	PrintToServer("DEBUG: Spawned a pumpkin for %N with an entity id of %i and has %i pumpkins", client, g_iPumpkins[client][g_iCurrent[client]], g_iCurrent[client]+1);
@@ -183,8 +231,11 @@ public void OnEntityDestroyed(int entity)
 					if (g_iPumpkins[i][x] == entity)
 					{
 #if defined DEBUG
-						PrintToServer("DEBUG: Destroyed a pumpkin for %N with an entity id of %i and has %i pumpkins (%i)", i, entity, g_iCurrent[i], x);
+						PrintToServer("DEBUG: Destroyed a pumpkin for %N with an entity id of %i and has %i pumpkins", i, entity, g_iCurrent[i]);
+						PrintToServer("DEBUG: Killed timer for pumpkin %i", g_iPumpkins[i][x]);
 #endif
+						if (g_hTimersMax[i][x] != INVALID_HANDLE) { KillTimer(g_hTimersMax[i][x]); g_hTimersMax[i][x] = INVALID_HANDLE; }
+						g_bTimerExists[i][x] = false;
 						g_iPumpkins[i][x] = 0;
 						g_iCurrent[i]--;
 					}
@@ -221,7 +272,7 @@ Action timerAutoRemove(Handle timer, any data)
 #endif
 						if (IsValidEntity(entity)) { AcceptEntityInput(entity, "Kill"); }
 						g_bTimerExists[i][x] = false;
-						g_hTimersMax[i][x] = INVALID_HANDLE;
+						if (g_hTimersMax[i][x] != INVALID_HANDLE) { g_hTimersMax[i][x] = INVALID_HANDLE; }
 					}
 				}
 			}
@@ -253,9 +304,9 @@ Action OnChangeClass(int client, const char[] command, int argc)
 			return Plugin_Stop;
 		}
 	}
+	// Limit medics
 	if (strcmp("joinclass", command, false) == 0 && strcmp("medic", arg1[0], false) == 0)
 	{
-	// Limit medics
 		if (GetPlayersByClass(TFClass_Medic) >= GetConVarInt(g_hMedicRestrictCount))
 		{
 	#if defined DEBUG
@@ -270,8 +321,23 @@ Action OnChangeClass(int client, const char[] command, int argc)
 			return Plugin_Stop;
 		}
 	}
-	// Limit pyros
 	// Limit spies
+	if (strcmp("joinclass", command, false) == 0 && strcmp("spy", arg1[0], false) == 0)
+	{
+		if (GetPlayersByClass(TFClass_Medic) >= GetConVarInt(g_hSpyRestrictCount))
+		{
+	#if defined DEBUG
+			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
+	#endif
+			if (GetConVarInt(g_hSpyRestrictCount) > 0)
+			{
+				PrintToChat(client, "[SM] There are already too many people playing as a spy.");
+			} else {
+				PrintToChat(client, "[SM] Spy has been disabled.");
+			}
+			return Plugin_Stop;
+		}
+	}
 	// Limit engineers
 	// Limit snipers
 	// Limit scouts
@@ -284,6 +350,7 @@ Action eventPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 	
 	if (!IsValidClient(client)) { return; }
 
+	// Medic
 	if (TF2_GetPlayerClass(client) == TFClass_Medic && wep_idx != -1)
 	{
 #if defined DEBUG
@@ -296,28 +363,22 @@ Action eventPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 		if (!TF2Attrib_SetByDefIndex(wep_idx, 59, GetConVarFloat(g_hMedicPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
 		if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
 	}
+	// Spy
+	if (TF2_GetPlayerClass(client) == TFClass_Spy && wep_idx != -1)
+	{
+#if defined DEBUG
+		PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
+		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f less", client, client, GetConVarFloat(g_hSpyPower));
+#endif
+		// Centerfire: 289
+		if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+		if (!TF2Attrib_SetByDefIndex(wep_idx, 289, 1.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+		if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+		if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 100.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+		if (!TF2Attrib_SetByDefIndex(wep_idx, 59, GetConVarFloat(g_hSpyPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+		if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
+	}
 }
-/* 
-			1 - Bullet
-			2 - Rocket
-			3 - Pipebomb
-			4 - Stickybomb (Stickybomb Launcher)
-			5 - Syringe
-			6 - Flare
-			8 - Huntsman Arrow
-			11 - Crusader's Crossbow Bolt
-			12 - Cow Mangler Particle
-			13 - Righteous Bison Particle
-			14 - Stickybomb (Sticky Jumper)
-			17 - Loose Cannon
-			18 - Rescue Ranger Claw
-			19 - Festive Huntsman Arrow
-			22 - Festive Jarate
-			23 - Festive Crusader's Crossbow Bolt
-			24 - Self Aware Beuty Mark
-			25 - Mutated Milk
-			26 - Grappling Hook 
-*/
 int GetPlayersByClass(TFClassType class)
 {
 	int count = 0;
@@ -340,7 +401,7 @@ bool IsValidClient(int client)
     
     return true;
 }
-SetTeleportEndPoint(int client)
+bool SetTeleportEndPoint(int client)
 {
 	float 
 		vAngles[3],
@@ -350,7 +411,6 @@ SetTeleportEndPoint(int client)
 		Distance;
 	GetClientEyePosition(client,vOrigin);
 	GetClientEyeAngles(client, vAngles);
-    //get endpoint for teleport
 	Handle trace = TR_TraceRayFilterEx(vOrigin, vAngles, MASK_SHOT, RayType_Infinite, TraceEntityFilterPlayer);
 	if(TR_DidHit(trace))
 	{   	 
@@ -374,7 +434,15 @@ public bool TraceEntityFilterPlayer(int entity, int contentsMask)
 {
 	return entity > GetMaxClients() || !entity;
 }
-// Convar hooks
+/*
+   _____        __      __          _    _             _        
+  / ____|       \ \    / /         | |  | |           | |       
+ | |     ___  _ _\ \  / /_ _ _ __  | |__| | ___   ___ | | _____ 
+ | |    / _ \| '_ \ \/ / _` | '__| |  __  |/ _ \ / _ \| |/ / __|
+ | |___| (_) | | | \  / (_| | |    | |  | | (_) | (_) |   <\__ \
+  \_____\___/|_| |_|\/ \__,_|_|    |_|  |_|\___/ \___/|_|\_\___/
+                                                                
+ */
 void cvarEnable(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
@@ -402,6 +470,13 @@ void cvarMedicPower(Handle convar, const char[] oldValue, const char[] newValue)
 		SetConVarFloat(g_hMedicPower, StringToFloat(newValue));
 	} 
 }
+void cvarSpyPower(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToFloat(newValue) > 0.0 && StringToFloat(newValue) <= 5.0)
+	{
+		SetConVarFloat(g_hSpyPower, StringToFloat(newValue));
+	} 
+}
 void cvarHeavyRestrict(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
@@ -410,9 +485,23 @@ void cvarHeavyRestrict(Handle convar, const char[] oldValue, const char[] newVal
 	}
 	else
 	{
-		if (StringToInt(newValue) <= 5)
+		if (StringToInt(newValue) <= MAXPLAYERS)
 		{
 			SetConVarInt(g_hHeavyRestrictCount, StringToInt(newValue));
+		} 
+	}
+}
+void cvarSpyRestrict(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
+	{
+		SetConVarBool(g_hSpyRestrictCount, false);
+	}
+	else
+	{
+		if (StringToInt(newValue) <= MAXPLAYERS)
+		{
+			SetConVarInt(g_hSpyRestrictCount, StringToInt(newValue));
 		} 
 	}
 }
@@ -424,7 +513,7 @@ void cvarMedicRestrict(Handle convar, const char[] oldValue, const char[] newVal
 	}
 	else
 	{
-		if (StringToInt(newValue) <= 5)
+		if (StringToInt(newValue) <= MAXPLAYERS)
 		{
 			SetConVarInt(g_hMedicRestrictCount, StringToInt(newValue));
 		}
