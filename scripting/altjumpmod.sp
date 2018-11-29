@@ -37,6 +37,7 @@
 #define VERSION "1.0"
 #define MAX_PUMPKIN_LIMIT 3
 
+// Will create a lot of console spam if on a large server.
 #define DEBUG
 
 float 
@@ -106,25 +107,6 @@ public void OnPluginStart()
 	
 	// Command listeners
 	AddCommandListener(OnChangeClass, "joinclass");
-	
-	CreateTimer(10.0, DebugTimer, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
-	
-}
-Action DebugTimer(Handle Timer, any data)
-{
-	for (int i=1;i<=MaxClients;i++)
-	{
-		if (IsValidClient(i))
-		{
-			for (int x=0;x<=MAX_PUMPKIN_LIMIT-1;x++)
-			{
-				PrintToServer("Report for %N (userid: %i)", i, i);
-				PrintToServer("Pumpkin: %i", g_iPumpkins[i][x]);
-				PrintToServer("Has Timer: %b", g_bTimerExists[i][x]);
-				PrintToServer("Current pumpkins: %i", g_iCurrent[i]);
-			}
-		}
-	}
 }
 int GetClientPumpkins(int client)
 {
@@ -309,9 +291,9 @@ Action OnChangeClass(int client, const char[] command, int argc)
 	{
 		if (GetPlayersByClass(TFClass_Medic) >= GetConVarInt(g_hMedicRestrictCount))
 		{
-	#if defined DEBUG
+#if defined DEBUG
 			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
-	#endif
+#endif
 			if (GetConVarInt(g_hMedicRestrictCount) > 0)
 			{
 				PrintToChat(client, "[SM] There are already too many people playing as a medic.");
@@ -324,11 +306,11 @@ Action OnChangeClass(int client, const char[] command, int argc)
 	// Limit spies
 	if (strcmp("joinclass", command, false) == 0 && strcmp("spy", arg1[0], false) == 0)
 	{
-		if (GetPlayersByClass(TFClass_Medic) >= GetConVarInt(g_hSpyRestrictCount))
+		if (GetPlayersByClass(TFClass_Spy) >= GetConVarInt(g_hSpyRestrictCount))
 		{
-	#if defined DEBUG
+#if defined DEBUG
 			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
-	#endif
+#endif
 			if (GetConVarInt(g_hSpyRestrictCount) > 0)
 			{
 				PrintToChat(client, "[SM] There are already too many people playing as a spy.");
@@ -355,7 +337,7 @@ Action eventPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 	{
 #if defined DEBUG
 		PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
-		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f less", client, client, GetConVarFloat(g_hMedicPower));
+		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hMedicPower));
 #endif
 		if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
 		if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
@@ -368,7 +350,7 @@ Action eventPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 	{
 #if defined DEBUG
 		PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
-		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f less", client, client, GetConVarFloat(g_hSpyPower));
+		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hSpyPower));
 #endif
 		// Centerfire: 289
 		if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
@@ -388,11 +370,30 @@ int GetPlayersByClass(TFClassType class)
 		{
 			count++;
 #if defined DEBUG
-			PrintToServer("DEBUG: We have found %i (%N) players currently playing as a heavy", count, i);
+			PrintToServer("DEBUG: We have found %i (%N) players currently playing as class a %s", count, i, GetClassname(class));
 #endif
 		}
 	}
 	return count;
+}
+char GetClassname(TFClassType class)
+{
+	char myreturn[32];
+	switch(class)
+	{
+		case 1:	{ Format(myreturn, sizeof(myreturn), "Scout"); }
+		case 2: { Format(myreturn, sizeof(myreturn), "Sniper"); }
+		case 3: { Format(myreturn, sizeof(myreturn), "Soldier"); }
+		case 4: { Format(myreturn, sizeof(myreturn), "Demoman"); }
+		case 5: { Format(myreturn, sizeof(myreturn), "Medic"); }
+		case 6: { Format(myreturn, sizeof(myreturn), "Heavy"); }
+		case 7: { Format(myreturn, sizeof(myreturn), "Pyro"); }
+		case 8: { Format(myreturn, sizeof(myreturn), "Spy"); }
+		case 9: { Format(myreturn, sizeof(myreturn), "Engineer"); }
+		// Should never get here.
+		default: { Format(myreturn, sizeof(myreturn), "Unknown"); }
+	}
+	return myreturn;
 }
 bool IsValidClient(int client)
 {
