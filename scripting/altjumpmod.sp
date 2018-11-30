@@ -52,9 +52,15 @@ Handle
 	g_hTimersMax[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT],
 	g_hHeavyRestrictCount,
 	g_hSpyRestrictCount,
+	g_hSniperRestrictCount,
 	g_hMedicRestrictCount,
 	g_hMedicPower,
-	g_hSpyPower;
+	g_hSpyPower,
+	g_hSniperPower,
+	g_hSniperReload,
+	g_hScoutPower,
+	g_hScoutRestrictCount,
+	g_hScoutDJ;
 bool
 	g_bTimerExists[MAXPLAYERS+1][MAX_PUMPKIN_LIMIT];
 
@@ -68,24 +74,27 @@ public Plugin myinfo =
 }
 public void OnPluginStart()
 {
-	// Classes exluded from this plugin soldier, and demo. They have ways to jump. Engineer is here to make it faster.
+	// Classes exluded from this plugin soldier, engineer, pyro and demo. They have ways to jump.
+	// Those class can either jump with their own weapons, or already have good plugins to aid/do it for them
 	CreateConVar("sm_ajm_version", VERSION, "AltJumpMod Version", FCVAR_SPONLY|FCVAR_NOTIFY|FCVAR_REPLICATED);
 	g_hEnabled = CreateConVar("sm_ajm_enable", "1", "Turns this plugin on, or off.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	// Heavy - Om nom nom nom!
 	g_hAutoRemove = CreateConVar("sm_ajm_autoremove", "1", "Auto remove pumpkins on/off.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	g_hHeavyRestrictCount = CreateConVar("sm_ajm_heavy_count", "1", "Limits the amount of heavys that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	g_hHeavyRestrictCount = CreateConVar("sm_ajm_heavy_count", "1", "Limits the amount of heavys that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	// Medic
-	g_hMedicRestrictCount = CreateConVar("sm_ajm_medic_count", "1", "Limits the amount of medics that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
-	g_hMedicPower = CreateConVar("sm_ajm_medic_power", "2.50", "Limits the amount of power the rockets give the medic.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 2.50, true, 5.0);
+	g_hMedicRestrictCount = CreateConVar("sm_ajm_medic_count", "1", "Limits the amount of medics that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	g_hMedicPower = CreateConVar("sm_ajm_medic_power", "1.50", "Limits the amount of power the rockets give the medic.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 10.0);
 	// Spy
-	g_hSpyPower = CreateConVar("sm_ajm_spy_power", "0.50", "Limits the amount of power the rockets give the spy.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 5.0);
-	g_hSpyRestrictCount = CreateConVar("sm_ajm_spy_count", "1", "Limits the amount of spies that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	g_hSpyPower = CreateConVar("sm_ajm_spy_power", "8.0", "Limits the amount of power the rockets give the spy.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 10.0);
+	g_hSpyRestrictCount = CreateConVar("sm_ajm_spy_count", "1", "Limits the amount of spies that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	// Scout
-
+	g_hScoutRestrictCount = CreateConVar("sm_ajm_scout_count", "1", "Limits the amount of scouts that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	g_hScoutPower = CreateConVar("sm_ajm_scout_power", "8.0", "Sets / Limits how many jumps the scout can make.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 10.0);
+	g_hScoutDJ = CreateConVar("sm_ajm_scout_dj", "0", "Allows the scout to double jump or not. (0 no double jump / 1 double jump)", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	// Sniper
-	
-	// Engineer
-	
+	g_hSniperPower = CreateConVar("sm_ajm_sniper_power", "8.0", "Limits the amount of power the rockets give the sniper.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.50, true, 10.0);
+	g_hSniperRestrictCount = CreateConVar("sm_ajm_sniper_count", "1", "Limits the amount of snipers that can use this at once.", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	g_hSniperReload = CreateConVar("sm_ajm_sniper_reload", "0.6", "Sets the snipers reload time on the sniper rifle", FCVAR_NOTIFY|FCVAR_DONTRECORD, true, 0.2, true, 1.5);
 	// Heavy commands
 	RegConsoleCmd("+pumpkin", cmdPumpkin, "Spawns a NON-SOLID pumpkin");
 	RegConsoleCmd("-pumpkin", cmdToggle, "DO NOT USE - This is automatically fired.", FCVAR_HIDDEN|FCVAR_DONTRECORD);
@@ -101,7 +110,14 @@ public void OnPluginStart()
 	// Spy stuff
 	HookConVarChange(g_hSpyRestrictCount, cvarSpyRestrict);
 	HookConVarChange(g_hSpyPower, cvarSpyPower);
-	
+	// Sniper stuff
+	HookConVarChange(g_hSniperRestrictCount, cvarSniperRestrict);
+	HookConVarChange(g_hSniperPower, cvarSniperPower);
+	HookConVarChange(g_hSniperReload, cvarSniperReload);
+	// Scout stuff
+	HookConVarChange(g_hScoutPower, cvarScoutPower);
+	HookConVarChange(g_hScoutRestrictCount, cvarScoutRestrict);
+	HookConVarChange(g_hScoutDJ, cvarScoutDJ);
 	// Event hooks
 	HookEvent("player_spawn", eventPlayerSpawn);
 	
@@ -279,7 +295,7 @@ Action OnChangeClass(int client, const char[] command, int argc)
 #endif
 			if (GetConVarInt(g_hHeavyRestrictCount) > 0)
 			{
-				PrintToChat(client, "[SM] There are already too many people playing as a heavy.");
+				PrintToChat(client, "[SM] There are already too many people playing as a Heavy.");
 			} else {
 				PrintToChat(client, "[SM] Heavy has been disabled.");
 			}
@@ -296,7 +312,7 @@ Action OnChangeClass(int client, const char[] command, int argc)
 #endif
 			if (GetConVarInt(g_hMedicRestrictCount) > 0)
 			{
-				PrintToChat(client, "[SM] There are already too many people playing as a medic.");
+				PrintToChat(client, "[SM] There are already too many people playing as a Medic.");
 			} else {
 				PrintToChat(client, "[SM] Medic has been disabled.");
 			}
@@ -313,53 +329,53 @@ Action OnChangeClass(int client, const char[] command, int argc)
 #endif
 			if (GetConVarInt(g_hSpyRestrictCount) > 0)
 			{
-				PrintToChat(client, "[SM] There are already too many people playing as a spy.");
+				PrintToChat(client, "[SM] There are already too many people playing as a Spy.");
 			} else {
 				PrintToChat(client, "[SM] Spy has been disabled.");
 			}
 			return Plugin_Stop;
 		}
 	}
-	// Limit engineers
 	// Limit snipers
+	if (strcmp("joinclass", command, false) == 0 && strcmp("sniper", arg1[0], false) == 0)
+	{
+		if (GetPlayersByClass(TFClass_Sniper) >= GetConVarInt(g_hSniperRestrictCount))
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
+#endif
+			if (GetConVarInt(g_hSniperRestrictCount) > 0)
+			{
+				PrintToChat(client, "[SM] There are already too many people playing as a Sniper.");
+			} else {
+				PrintToChat(client, "[SM] Sniper has been disabled.");
+			}
+			return Plugin_Stop;
+		}
+	}
 	// Limit scouts
+	if (strcmp("joinclass", command, false) == 0 && strcmp("scout", arg1[0], false) == 0)
+	{
+		if (GetPlayersByClass(TFClass_Scout) >= GetConVarInt(g_hScoutRestrictCount))
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Blocking client %i (%N) from joining as a %s.", client, client, arg1[0]);
+#endif
+			if (GetConVarInt(g_hScoutRestrictCount) > 0)
+			{
+				PrintToChat(client, "[SM] There are already too many people playing as a Scout.");
+			} else {
+				PrintToChat(client, "[SM] Scout has been disabled.");
+			}
+			return Plugin_Stop;
+		}
+	}
 	return Plugin_Continue;
 }
 Action eventPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-	int wep_idx = GetPlayerWeaponSlot(client, 0);
-	
-	if (!IsValidClient(client)) { return; }
-
-	// Medic
-	if (TF2_GetPlayerClass(client) == TFClass_Medic && wep_idx != -1)
-	{
-#if defined DEBUG
-		PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
-		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hMedicPower));
-#endif
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 100.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 59, GetConVarFloat(g_hMedicPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
-	}
-	// Spy
-	if (TF2_GetPlayerClass(client) == TFClass_Spy && wep_idx != -1)
-	{
-#if defined DEBUG
-		PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
-		PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hSpyPower));
-#endif
-		// Centerfire: 289
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 289, 1.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 100.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_SetByDefIndex(wep_idx, 59, GetConVarFloat(g_hSpyPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
-		if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
-	}
+	ChangePlayerWeapon(client, TF2_GetPlayerClass(client));
 }
 int GetPlayersByClass(TFClassType class)
 {
@@ -375,6 +391,104 @@ int GetPlayersByClass(TFClassType class)
 		}
 	}
 	return count;
+}
+void ChangePlayerWeapon(int client, TFClassType class)
+{
+	if (!IsValidClient(client)) { return; }
+	{
+		int wep_idx = GetPlayerWeaponSlot(client, 0);
+		// Medic
+		if (class == TFClass_Medic && wep_idx != -1)
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
+			PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hMedicPower));
+#endif
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 100.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 58, GetConVarFloat(g_hMedicPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
+		}
+		// Spy
+		if (class == TFClass_Spy && wep_idx != -1)
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
+			PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hSpyPower));
+#endif
+			// Centerfire: 289
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 289, 1.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 100.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 58, GetConVarFloat(g_hSpyPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
+		}
+		// Sniper
+		if (class == TFClass_Sniper && wep_idx != -1)
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
+			PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hSniperPower));
+#endif
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 289, 1.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 150.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 58, GetConVarFloat(g_hSniperPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 318, GetConVarFloat(g_hSniperReload))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
+		}
+		// Scout
+		if (class == TFClass_Scout && wep_idx != -1)
+		{
+#if defined DEBUG
+			PrintToServer("DEBUG: Allowing client %i (%N) to use rockets on weapon id %i.", client, client, wep_idx);
+			PrintToServer("DEBUG: Setting %i (%N) rocket damage push to %-.2f", client, client, GetConVarFloat(g_hScoutPower));
+#endif
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 280, 2.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 289, 1.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }	
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 135, 0.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 2, 150.0)) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (!TF2Attrib_SetByDefIndex(wep_idx, 58, GetConVarFloat(g_hScoutPower))) { PrintToChat(client, "[SM] Failed to apply changes."); LogError("Failed to apply attribute changes to %i on client %i (%N)", wep_idx, client, client); }
+			if (GetConVarBool(g_hScoutDJ) && GetConVarBool(g_hScoutDJ))
+			{
+#if defined DEBUG
+				PrintToServer("DEBUG: Turned on double jump.");
+#endif
+				TF2Attrib_RemoveByDefIndex(wep_idx, 49);
+			}
+			else
+			{
+#if defined DEBUG
+				PrintToServer("DEBUG: Turned off double jump.");
+#endif
+				TF2Attrib_SetByDefIndex(wep_idx, 49, 1.0);
+			}
+			if (!TF2Attrib_ClearCache(wep_idx)) { LogError("Failed to clear cache."); }
+		}
+	}
+}
+void ReloadPlayerWeapons()
+{
+	bool remove = false;
+	if (!GetConVarBool(g_hEnabled))
+	{
+		remove = true;
+	}
+	for (int i=1;i<=MaxClients;i++)
+	{
+		if (IsValidClient(i))
+		{
+			ChangePlayerWeapon(i, TF2_GetPlayerClass(i));
+			if (remove)
+			{
+				TF2_RemoveAllWeapons(i);
+				TF2_RegeneratePlayer(i);
+			}
+		}
+	}
 }
 char GetClassname(TFClassType class)
 {
@@ -435,15 +549,6 @@ public bool TraceEntityFilterPlayer(int entity, int contentsMask)
 {
 	return entity > GetMaxClients() || !entity;
 }
-/*
-   _____        __      __          _    _             _        
-  / ____|       \ \    / /         | |  | |           | |       
- | |     ___  _ _\ \  / /_ _ _ __  | |__| | ___   ___ | | _____ 
- | |    / _ \| '_ \ \/ / _` | '__| |  __  |/ _ \ / _ \| |/ / __|
- | |___| (_) | | | \  / (_| | |    | |  | | (_) | (_) |   <\__ \
-  \_____\___/|_| |_|\/ \__,_|_|    |_|  |_|\___/ \___/|_|\_\___/
-                                                                
- */
 void cvarEnable(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
@@ -460,63 +565,96 @@ void cvarEnable(Handle convar, const char[] oldValue, const char[] newValue)
 void cvarAutoRemove(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
+	{
 		SetConVarBool(g_hEnabled, false);
+		ReloadPlayerWeapons();
+	}
 	else
+	{
 		SetConVarBool(g_hEnabled, true);
+		ReloadPlayerWeapons();
+	}
+}
+void cvarScoutPower(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	SetConVarFloat(g_hScoutPower, StringToFloat(newValue));
+	ReloadPlayerWeapons();
 }
 void cvarMedicPower(Handle convar, const char[] oldValue, const char[] newValue)
 {
-	if (StringToFloat(newValue) > 0.0 && StringToFloat(newValue) <= 5.0)
-	{
-		SetConVarFloat(g_hMedicPower, StringToFloat(newValue));
-	} 
+	SetConVarFloat(g_hMedicPower, StringToFloat(newValue));
+	ReloadPlayerWeapons();
 }
 void cvarSpyPower(Handle convar, const char[] oldValue, const char[] newValue)
 {
-	if (StringToFloat(newValue) > 0.0 && StringToFloat(newValue) <= 5.0)
+	SetConVarFloat(g_hSpyPower, StringToFloat(newValue));
+	ReloadPlayerWeapons();
+}
+void cvarSniperPower(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	SetConVarFloat(g_hSniperPower, StringToFloat(newValue));
+	ReloadPlayerWeapons();
+}
+void cvarSniperReload(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
 	{
-		SetConVarFloat(g_hSpyPower, StringToFloat(newValue));
-	} 
+		SetConVarBool(g_hSniperReload, false);
+		ReloadPlayerWeapons();
+	}
+	else
+	{
+		SetConVarInt(g_hSniperReload, StringToInt(newValue));
+		ReloadPlayerWeapons();
+	}
 }
 void cvarHeavyRestrict(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
-	{
 		SetConVarBool(g_hHeavyRestrictCount, false);
-	}
 	else
-	{
-		if (StringToInt(newValue) <= MAXPLAYERS)
-		{
-			SetConVarInt(g_hHeavyRestrictCount, StringToInt(newValue));
-		} 
-	}
+		SetConVarInt(g_hHeavyRestrictCount, StringToInt(newValue));
 }
 void cvarSpyRestrict(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
-	{
 		SetConVarBool(g_hSpyRestrictCount, false);
+	else
+		SetConVarInt(g_hSpyRestrictCount, StringToInt(newValue));
+}
+void cvarScoutRestrict(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
+		SetConVarBool(g_hScoutRestrictCount, false);
+	else
+		SetConVarInt(g_hScoutRestrictCount, StringToInt(newValue));
+}
+void cvarScoutDJ(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
+	{
+		SetConVarBool(g_hScoutDJ, false);
+		ReloadPlayerWeapons();
 	}
 	else
 	{
-		if (StringToInt(newValue) <= MAXPLAYERS)
-		{
-			SetConVarInt(g_hSpyRestrictCount, StringToInt(newValue));
-		} 
+		SetConVarInt(g_hScoutDJ, StringToInt(newValue));
+		ReloadPlayerWeapons();
 	}
+}
+void cvarSniperRestrict(Handle convar, const char[] oldValue, const char[] newValue)
+{
+	if (StringToInt(newValue) == 0)
+		SetConVarBool(g_hSniperRestrictCount, false);
+	else
+		SetConVarInt(g_hSniperRestrictCount, StringToInt(newValue));
 }
 void cvarMedicRestrict(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	if (StringToInt(newValue) == 0)
-	{
 		SetConVarBool(g_hMedicRestrictCount, false);
-	}
 	else
 	{
-		if (StringToInt(newValue) <= MAXPLAYERS)
-		{
-			SetConVarInt(g_hMedicRestrictCount, StringToInt(newValue));
-		}
+		SetConVarInt(g_hMedicRestrictCount, StringToInt(newValue));
 	}
 }
